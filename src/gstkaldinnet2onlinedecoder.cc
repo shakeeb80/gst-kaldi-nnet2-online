@@ -61,6 +61,7 @@
 #include <iostream>
 
 #include <jansson.h>
+#include <mutex>
 
 /* JSON_REAL_PRECISION is a macro from libjansson 2.7. Ubuntu 12.04 only has 2.2.1-1 */
 #ifndef JSON_REAL_PRECISION
@@ -69,6 +70,23 @@
 
 
 namespace kaldi {
+
+
+fst::Fst<fst::StdArc> * new_decode_fst  = nullptr;
+std::mutex fst_mutex;
+
+fst::Fst<fst::StdArc> * load_fst(gchar * str) {
+  std::lock_guard<std::mutex> guard(fst_mutex);
+  
+  if(new_decode_fst == nullptr) {
+    // Check if the model filename is not empty
+    if (strcmp(str, "") != 0) {
+        new_decode_fst = fst::ReadFstKaldiGeneric(str);
+    }
+  }
+  
+  return new_decode_fst;
+}
 
 GST_DEBUG_CATEGORY_STATIC(gst_kaldinnet2onlinedecoder_debug);
 #define GST_CAT_DEFAULT gst_kaldinnet2onlinedecoder_debug
@@ -1904,10 +1922,10 @@ gst_kaldinnet2onlinedecoder_load_fst(Gstkaldinnet2onlinedecoder * filter,
       try {
         GST_DEBUG_OBJECT(filter, "Loading decoder graph: %s", str);
 
-        fst::Fst<fst::StdArc> * new_decode_fst = fst::ReadFstKaldiGeneric(str);
+        auto new_decode_fst = load_fst(str);
 
         // Delete objects if needed
-        if (filter->decode_fst) {
+        if (filter->decode_fst && filter->decode_fst != new_decode_fst) {
           delete filter->decode_fst;
         }
 
